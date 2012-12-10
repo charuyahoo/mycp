@@ -15,17 +15,19 @@
 
 package in.mycp.utils;
 
+import in.mycp.domain.AccountLog;
 import in.mycp.domain.Asset;
 import in.mycp.domain.AssetType;
+import in.mycp.domain.Company;
 import in.mycp.domain.ProductCatalog;
 import in.mycp.domain.User;
 import in.mycp.domain.Workflow;
+import in.mycp.domain.AccountLogTypeDTO;
 import in.mycp.web.MycpSession;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -36,17 +38,18 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.log4j.Logger;
 import org.directwebremoting.WebContextFactory;
 import org.jbpm.api.ProcessInstance;
+import org.joda.time.DateTime;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 public class Commons {
-
+	
 	private static final Logger log = Logger.getLogger(Commons.class.getName());
 
 	static public enum ASSET_TYPE {
 		IpAddress, SecurityGroup, IpPermission, Volume, VolumeSnapshot, ComputeImage, ComputeInstance, KeyPair, addressInfo
 	}
-
+	
 	static public enum ProductType {
 		IpAddress("Ip Address"), SecurityGroup("Security Group"), Volume("Volume"), VolumeSnapshot("Snapshot"), ComputeImage("Image"), ComputeInstance(
 				"Instance"), KeyPair("Key Pair");
@@ -97,6 +100,14 @@ public class Commons {
 	static public enum sync_status {
 		running,failed,success
 	}
+	
+	static public enum task_name {
+		SIGNIN, LOGOUT,COMPUTE, IPADDRESS, VOLUME, SECURITYGROUP, KEYPAIR,IMAGE, SNAPSHOT, PROJECT, DEPARTMENT,USER, CLOUD,AVAILABILITYZONE,PRODUCT,PRODUCTTYPE,WORKFLOW,SYNC
+	}
+	
+	static public enum task_status {
+		FAIL, SUCCESS
+	}
 
 	public static String VOLUME_STATUS_AVAILABLE = "available";
 	public static String VOLUME_STATUS_INUSE = "in-use";
@@ -109,9 +120,23 @@ public class Commons {
 	public static int ROLE_ADMIN_INTVAL = 3;
 	public static int ROLE_MANAGER_INTVAL = 6;
 	public static int ROLE_SUPERADMIN_INTVAL = 9;
+	
+	public static int INFRA_TYPE_EUCA=1;
+	public static int INFRA_TYPE_AWS=2;
+	public static int INFRA_TYPE_VCLOUD=3;
+	
+	public static String PROTOCOL_TYPE_TCP="tcp";
+	public static String PROTOCOL_TYPE_UDP="udp";
+	public static String PROTOCOL_TYPE_ICMP="icmp";
+	public static String PROTOCOL_TYPE_ANY="any";
+	public static String PROTOCOL_TYPE_TCP_UDP="tcp_udp";
+	public static String PROTOCOL_TYPE_TCP_ICMP="tcp_icmp";
+	public static String PROTOCOL_TYPE_UDP_ICMP="udp_icmp";
+	
+	
 
 	static public enum ROLE {
-		ROLE_USER, ROLE_ADMIN, ROLE_MANAGER, ROLE_SUPERADMIN
+		ROLE_USER, ROLE_MANAGER, ROLE_SUPERADMIN
 	}
 
 	static public enum WORKFLOW_STATUS {
@@ -121,6 +146,15 @@ public class Commons {
 	static public enum WORKFLOW_TRANSITION {
 		Reject,Approve
 	}
+	
+	public static String QUOTA_EXCEED_MSG = "Quota Exceeded.";
+	
+	public static int PRIVATE_CLOUD_EDITION_ENABLED=1;
+	public static int HOSTED_EDITION_ENABLED=2;
+	public static int SERVICE_PROVIDER_EDITION_ENABLED=3;
+	
+	public static int EDITION_ENABLED=HOSTED_EDITION_ENABLED;
+	
 
 	public static List getAllJbpmProcDefNames() {
 		// public static final String JBPM_PROC_DEF_NAME_FVC_BILL = "fvc bill";
@@ -138,10 +172,14 @@ public class Commons {
 		return fieldList;
 	}
 
-	public static Asset getNewAsset(AssetType at, User currentUser, String productCatalogId) {
+	public static Asset getNewAsset(AssetType at, User currentUser, String productCatalogId, long allAssetTotalCosts, Company company) throws Exception {
 		Asset asset = new Asset();
 		asset.setActive(true);
-
+		
+		System.out.println(company);
+		if(company.getQuota()>0 && (company.getQuota()-allAssetTotalCosts <= company.getMinBal())){
+			throw new Exception(QUOTA_EXCEED_MSG);
+		}
 		asset.setStartTime(new Date());
 		asset.setAssetType(at);
 		asset.setDetails("from mycp");
@@ -230,8 +268,8 @@ public class Commons {
 			mysession.setFirstName("");
 			mysession.setLastName("");
 			try {
-				mysession.setCompany(user.getProject().getDepartment().getCompany().getName());
-				mysession.setCompanyId(user.getProject().getDepartment().getCompany().getId());
+				mysession.setCompany(user.getDepartment().getCompany().getName());
+				mysession.setCompanyId(user.getDepartment().getCompany().getId());
 			} catch (Exception e) {
 				// e.printStackTrace();
 			}
@@ -289,4 +327,31 @@ public class Commons {
 		a.merge();
 	}
 
+	public static List<AccountLogTypeDTO> getAllAccountLogTypes(){
+		
+		List<AccountLogTypeDTO> list = new ArrayList<AccountLogTypeDTO>();
+			list.add(new AccountLogTypeDTO(1, "last 24 Hours"));
+			list.add(new AccountLogTypeDTO(2, "last 7 days"));
+			int acctLogTypeId = 3;
+			DateTime dt = new DateTime();
+			
+			for(int i =0;i<6;i++ ){
+				list.add(new AccountLogTypeDTO(acctLogTypeId, dt.minusMonths(i).monthOfYear().getAsText()));
+				acctLogTypeId++;
+			}
+		return list;
+	}
+	
+	public static DateTime getDateTimeFromMonthName(String monthName){
+		
+		DateTime dt = new DateTime();
+		for(int i =0;i<7;i++ ){
+			if(monthName.equals(dt.minusMonths(i).monthOfYear().getAsText())){
+				return dt.minusMonths(i);
+			}
+		}
+		return null;
+	}
+
+	
 }

@@ -4,6 +4,7 @@
 <script type='text/javascript' src='/dwr/interface/VolumeInfoP.js'></script>
 <script type='text/javascript' src='/dwr/interface/ZoneService.js'></script>
 <script type='text/javascript' src='/dwr/interface/InstanceP.js'></script>
+<script type='text/javascript' src='/dwr/interface/ProjectService.js'></script>
 
 <script type="text/javascript">
 /***************************/
@@ -80,6 +81,7 @@
 	        "aoColumns": [
 	            { "sTitle": "#" },
 	            { "sTitle": "Name" },
+	            { "sTitle": "Project" },
 	            { "sTitle": "Volume Id" },
 	            { "sTitle": "Size(GB)" },
 	            { "sTitle": "Create Time" },
@@ -136,9 +138,12 @@
             	}
             	
             	
-            	
+            	var projName = '';
+    			try{
+    				projName = p[i].asset.project.name;
+    			}catch(e){}
 				
-			oTable.fnAddData( [start+i+1,p[i].name,p[i].volumeId, p[i].size+' (GB)',
+			oTable.fnAddData( [start+i+1,p[i].name,projName,p[i].volumeId, p[i].size+' (GB)',
 			                   dateFormat(p[i].createTime,"mmm dd yyyy HH:MM:ss"),p[i].status,p[i].details,p[i].asset.productCatalog.infra.name,
 			                  actions ] );
 		}
@@ -244,13 +249,22 @@ $(function(){
 				 }
 				});
 			
-			
+			ProjectService.findAll(function(p){
+				dwr.util.removeAllOptions('projectId');
+				//dwr.util.addOptions('project', p, 'id', 'name');
+				dwr.util.addOptions('projectId', p, 'id', function(p) {
+					return p.name+' @ '+p.department.name;
+				});
+				//dwr.util.setValue(id, sel);
+				
+			});
 		});
 		
 	function submitForm_volume(f){
-		var volumeinfop = {  id:viewed_volume,name:null, size:null, zone:null,product:null };
+		CommonService.getSessionMsg(function(p){   $.sticky(p);  });
+		var volumeinfop = {  id:viewed_volume,name:null, size:null, zone:null,product:null, projectId:null };
 		  dwr.util.getValues(volumeinfop);
-		  
+		  volumeinfop.projectId=dwr.util.getValue("projectId");
 		  volumeinfop.zone=dwr.util.getValue("zone");
 		  if(viewed_volume == -1){
 			  volumeinfop.id  = null; 
@@ -263,9 +277,8 @@ $(function(){
 	}
 	
 	function submitForm_volume_attach(f){
-		var volumeinfop = {  id:viewed_volume,volumeId:null, device:null, instanceId:null };
+		var volumeinfop = {  id:viewed_volume,volumeId:null, device:null, instanceId:null, projectId:null };
 		  dwr.util.getValues(volumeinfop);
-		  
 		  //volumeinfop.zone=dwr.util.getValue("zone");
 		  if(viewed_volume == -1){
 			  volumeinfop.id  = null; 
@@ -425,6 +438,14 @@ $(function(){
 								<p id="contactArea_volume" class="contactArea" >
 								<input type="hidden" id="id" name="id">
 								<table style="width: 100%;">
+								<tr>
+								    <td style="width: 50%;">Product : </td>
+								    <td style="width: 50%;">
+								    <select id="product" name="product" style="width: 205px;" class="required">
+							    	</select>
+							    	</td>
+								  </tr>
+								  
 								  <tr>
 								    <td style="width: 50%;">Name : </td>
 								    <td style="width: 50%;"><input type="text" name="name" id="name" size="30" class="required"></td>
@@ -440,10 +461,11 @@ $(function(){
 								    <select id="zone" name="zone" style="width: 205px;" class="required">
 							    	</select></td>
 								  </tr>
-								   <tr>
-								    <td style="width: 50%;">Product : </td>
-								    <td style="width: 50%;">
-								    <select id="product" name="product" style="width: 205px;" class="required">
+								   
+								  <tr>
+								    <td style="width: 20%;">project : </td>
+								    <td style="width: 80%;">
+								    <select id="projectId" name="projectId" style="width: 205px;" class="required">
 							    	</select>
 							    	</td>
 								  </tr>

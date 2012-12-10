@@ -22,10 +22,11 @@ import in.mycp.domain.Company;
 import in.mycp.domain.Infra;
 import in.mycp.domain.InstanceP;
 import in.mycp.domain.ProductCatalog;
+import in.mycp.domain.Project;
 import in.mycp.domain.User;
-import in.mycp.domain.Workflow;
 import in.mycp.utils.Commons;
 import in.mycp.workers.ComputeWorker;
+import in.mycp.workers.VmwareComputeWorker;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -37,7 +38,6 @@ import java.util.Set;
 import org.apache.log4j.Logger;
 import org.directwebremoting.annotations.RemoteMethod;
 import org.directwebremoting.annotations.RemoteProxy;
-import org.jbpm.pvm.internal.jobexecutor.GetNextDueDateCmd;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -54,18 +54,51 @@ public class InstancePService {
 	WorkflowService workflowService;
 	@Autowired
 	ComputeWorker computeWorker;
+	@Autowired
+	VmwareComputeWorker vmwareComputeWorker;
+	
+	
+	@Autowired
+	ReportService reportService;
 
+	@Autowired
+	AccountLogService accountLogService;
+
+	
 	SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd-hh.mm.ss");
 
 	@RemoteMethod
 	public void requestCompute(InstanceP instance) {
 		try {
-
+			System.out.println(instance.getImageId());
+			Infra i = ProductCatalog.findProductCatalog(Integer.parseInt(instance.getProduct())).getInfra();
+			String fullImageId = instance.getImageId();
+			if(i.getInfraType().getId() == Commons.INFRA_TYPE_AWS ||
+					i.getInfraType().getId() == Commons.INFRA_TYPE_EUCA){
+				
+				
+				if(fullImageId.indexOf(',')>0){
+					instance.setImageId(fullImageId.substring(0,fullImageId.indexOf(',')));  
+				  } 
+				
+				
+			}else if(i.getInfraType().getId() == Commons.INFRA_TYPE_VCLOUD){
+				instance.setImageId(fullImageId.substring(fullImageId.lastIndexOf(',')+1)); 
+				
+				
+			}
+				
+			//System.out.println(instance.getImageId());
+			
 			User currentUser = Commons.getCurrentUser();
 			AssetType assetTypeComputeInstance = AssetType.findAssetTypesByNameEquals(Commons.ASSET_TYPE.ComputeInstance + "")
 					.getSingleResult();
 
-			Asset asset = Commons.getNewAsset(assetTypeComputeInstance, currentUser,instance.getProduct());
+			long allAssetTotalCosts = reportService.getAllAssetCosts().getTotalCost();
+			currentUser = User.findUser(currentUser.getId());
+			Company company = currentUser.getDepartment().getCompany();
+			Asset asset = Commons.getNewAsset(assetTypeComputeInstance, currentUser,instance.getProduct(), allAssetTotalCosts,company);
+			asset.setProject(Project.findProject(instance.getProjectId()));
 			instance.setAsset(asset);
 			instance = instance.merge();
 			Set<InstanceP> instances = new HashSet<InstanceP>();
@@ -76,14 +109,25 @@ public class InstancePService {
 						+ ""), instance.getId(), asset.getAssetType().getName());
 				instance.setState(Commons.WORKFLOW_STATUS.PENDING_APPROVAL + "");
 				instance = instance.merge();
+				accountLogService.saveLog("Compute '"+instance.getName()+"' with ID "+instance.getId()+" requested, workflow started, pending approval.", Commons.task_name.COMPUTE.name(), 
+						Commons.task_status.SUCCESS.ordinal(),currentUser.getEmail());
+				Commons.setSessionMsg("requestCompute Instance "+instance.getName() +" scheduled");
 			} else {
+				accountLogService.saveLog("Compute '"+instance.getName()+"' with ID "+instance.getId()+" requested, workflow approved automatically.", Commons.task_name.COMPUTE.name(), 
+						Commons.task_status.SUCCESS.ordinal(),currentUser.getEmail());
 				instance.setState(Commons.REQUEST_STATUS.STARTING + "");
 				instance = instance.merge();
+				Commons.setSessionMsg("requestCompute Instance "+instance.getName() +" workflow aproved");
 				workflowApproved(instances);
 			}
 			log.info("end of requestCompute");
 		} catch (Exception e) {
-			log.error(e.getMessage());//e.printStackTrace();
+			log.error(e.getMessage());
+			e.printStackTrace();
+			Commons.setSessionMsg("Error while requestCompute Instance "+instance.getName()
+					+"<br> Reason: "+e.getMessage());
+			accountLogService.saveLogAndSendMail("Error in Compute '"+instance.getName()+"' request with ID "+instance.getId()+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
 		}
 	}// end of requestCompute(InstanceP
 
@@ -113,12 +157,24 @@ public class InstancePService {
 			for (Iterator iterator = instances.iterator(); iterator.hasNext();) {
 				InstanceP instanceP = (InstanceP) iterator.next();
 				try {
-				computeWorker.createrCompute(instanceP.getAsset().getProductCatalog().getInfra(), instanceP);
+				Infra infra = instanceP.getAsset().getProductCatalog().getInfra();
+				if(infra.getInfraType().getId() == Commons.INFRA_TYPE_AWS 
+						|| infra.getInfraType().getId() == Commons.INFRA_TYPE_EUCA){
+					computeWorker.createCompute(infra, instanceP,Commons.getCurrentUser().getEmail());
+				}else{
+					vmwareComputeWorker.createCompute(infra, instanceP,Commons.getCurrentUser().getEmail());
+				}
+					
+				
 				log.info("Scheduled ComputeCreateWorker for " + instanceP.getName());
 				Commons.setSessionMsg("Scheduled Instance creation "+ instanceP.getId());
+				accountLogService.saveLog("Workflow approved for compute '"+instanceP.getName()+"' with ID "+instanceP.getId()+", compute creation scheduled.", Commons.task_name.COMPUTE.name(),
+						Commons.task_status.SUCCESS.ordinal(),Commons.getCurrentUser().getEmail());
 				} catch (Exception e) {
 					log.error(e.getMessage());//e.printStackTrace();
 					Commons.setSessionMsg("Error while scheduling Instance creation "+instanceP.getId());
+					accountLogService.saveLog("Error during Workflow approval for compute '"+instanceP.getName()+"' with ID "+instanceP.getId()+", "+e.getMessage(), 
+							Commons.task_name.COMPUTE.name(), Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
 				}
 			}
 			log.info("end of createCompute");
@@ -132,23 +188,31 @@ public class InstancePService {
 		try {
 			InstanceP i = instance.merge();
 			Commons.setSessionMsg("Saved Instance "+i.getId());
+			//accountLogService.saveLogAndSendMail("Compute save with ID "+instance.getId(), Commons.task_name.COMPUTE.name(), Commons.task_status.FAIL.ordinal());
 			return i;
 		} catch (Exception e) {
 			log.error(e.getMessage());//e.printStackTrace();
 			Commons.setSessionMsg("Error while saving Instance "+instance.getName());
+			//accountLogService.saveLogAndSendMail("Error in Compute save with ID "+instance.getId()+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), Commons.task_status.FAIL.ordinal());
 		}
 		return null;
 	}// end of saveOrUpdate(InstanceP
 
 	@RemoteMethod
 	public void remove(int id) {
+		InstanceP instance = InstanceP.findInstanceP(id);
+		String instanceName = instance.getName();
 		try {
 			//terminateCompute(id);
-			InstanceP.findInstanceP(id).remove();
+			instance.remove();
 			Commons.setSessionMsg("Removed Instance "+id);
+			accountLogService.saveLog("Compute instance '"+instanceName+"' removed with ID "+id, Commons.task_name.COMPUTE.name(), Commons.task_status.SUCCESS.ordinal()
+					,Commons.getCurrentUser().getEmail());
 		} catch (Exception e) {
 			log.error(e.getMessage());//e.printStackTrace();
 			Commons.setSessionMsg("Error while removing Instance "+id);
+			accountLogService.saveLog("Error in Compute instance '"+instanceName+"' removal with ID "+id, Commons.task_name.COMPUTE.name(), Commons.task_status.FAIL.ordinal()
+					,Commons.getCurrentUser().getEmail());
 		}
 	}// end of method remove(int id
 
@@ -171,8 +235,7 @@ public class InstancePService {
 			//if role is MANAGER , show all VMs
 			//if role is MYCP_ADMIN , show all VMs including System VMs
 			//for everybody else, just show their own VMs
-			if(user.getRole().getName().equals(Commons.ROLE.ROLE_MANAGER+"")
-					|| user.getRole().getName().equals(Commons.ROLE.ROLE_ADMIN+"")){
+			if(user.getRole().getName().equals(Commons.ROLE.ROLE_MANAGER+"")){
 				return InstanceP.findInstancePsByCompany(Company.findCompany(Commons.getCurrentSession().getCompanyId()),start, max,search).getResultList();
 			}else if(user.getRole().getName().equals(Commons.ROLE.ROLE_SUPERADMIN+"")){
 				return InstanceP.findAllInstancePs(start, max,search);
@@ -225,23 +288,56 @@ public class InstancePService {
 
 	@RemoteMethod
 	public void terminateCompute(int id) {
-		Commons.setAssetEndTime(InstanceP.findInstanceP(id).getAsset());
-		computeWorker.terminateCompute(InstanceP.findInstanceP(id).getAsset().getProductCatalog().getInfra(), id);
+		InstanceP instanceP = InstanceP.findInstanceP(id);
+		try {
+		Commons.setAssetEndTime(instanceP.getAsset());
+		computeWorker.terminateCompute(instanceP.getAsset().getProductCatalog().getInfra(), id,Commons.getCurrentUser().getEmail());
+		accountLogService.saveLog("Compute instance '"+instanceP.getName()+"' terminated with ID "+id, Commons.task_name.COMPUTE.name(), Commons.task_status.SUCCESS.ordinal()
+				,Commons.getCurrentUser().getEmail());
+		} catch (Exception e) {
+			accountLogService.saveLog("Error in Compute instance '"+instanceP.getName()+"' termination with ID "+id+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
+		}
 	}
 
 	@RemoteMethod
 	public void stopCompute(int id) {
-		computeWorker.stopCompute(InstanceP.findInstanceP(id).getAsset().getProductCatalog().getInfra(), id);
+		InstanceP instanceP = InstanceP.findInstanceP(id);
+		try {
+			computeWorker.stopCompute(instanceP.getAsset().getProductCatalog().getInfra(), id,Commons.getCurrentUser().getEmail());	
+			accountLogService.saveLog("Compute instance '"+instanceP.getName()+"' stopped with ID "+id, Commons.task_name.COMPUTE.name(), Commons.task_status.SUCCESS.ordinal()
+					,Commons.getCurrentUser().getEmail());
+		} catch (Exception e) {
+			accountLogService.saveLog("Error while stopping Compute instance '"+instanceP.getName()+"' with ID "+id+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
+		}
+		
 	}
 
 	@RemoteMethod
 	public void startCompute(int id) {
-		computeWorker.startCompute(InstanceP.findInstanceP(id).getAsset().getProductCatalog().getInfra(), id);
+		InstanceP instanceP = InstanceP.findInstanceP(id);
+		try {
+			computeWorker.startCompute(instanceP.getAsset().getProductCatalog().getInfra(), id,Commons.getCurrentUser().getEmail());	
+			accountLogService.saveLog("Compute instance '"+instanceP.getName()+"' started with ID "+id, Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.SUCCESS.ordinal(),Commons.getCurrentUser().getEmail());
+		} catch (Exception e) {
+			accountLogService.saveLog("Error while starting Compute instance '"+instanceP.getName()+"' with ID "+id+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
+		}
 	}
 
 	@RemoteMethod
 	public void restartCompute(int id) {
-		computeWorker.restartCompute(InstanceP.findInstanceP(id).getAsset().getProductCatalog().getInfra(), id);
+		InstanceP instanceP = InstanceP.findInstanceP(id);
+		try {
+			computeWorker.restartCompute(instanceP.getAsset().getProductCatalog().getInfra(), id,Commons.getCurrentUser().getEmail());
+			accountLogService.saveLog("Compute instance '"+instanceP.getName()+"' restarted with ID "+id, Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.SUCCESS.ordinal(),Commons.getCurrentUser().getEmail());
+		} catch (Exception e) {
+			accountLogService.saveLog("Error while restarting Compute instance '"+instanceP.getName()+"' with ID "+id+", "+e.getMessage(), Commons.task_name.COMPUTE.name(), 
+					Commons.task_status.FAIL.ordinal(),Commons.getCurrentUser().getEmail());
+		}
 	}
 
 	@RemoteMethod

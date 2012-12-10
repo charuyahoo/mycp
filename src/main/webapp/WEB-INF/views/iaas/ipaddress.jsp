@@ -4,6 +4,7 @@
 <%@ taglib uri="http://tiles.apache.org/tags-tiles" prefix="tiles" %>
   <script type='text/javascript' src='/dwr/interface/AddressInfoP.js'></script>
   <script type='text/javascript' src='/dwr/interface/InstanceP.js'></script>
+  <script type='text/javascript' src='/dwr/interface/ProjectService.js'></script>
   
 <script type="text/javascript">
 /***************************/
@@ -78,6 +79,7 @@ function centerPopup_ipaddress(popup,backgroundPopup){
 	        "aoColumns": [
 	            { "sTitle": "#" },
 	            { "sTitle": "Name" },
+	            { "sTitle": "Project" },
 	            { "sTitle": "Instance Id" },
 	            { "sTitle": "Public IP" },
 	            { "sTitle": "Status" },
@@ -133,7 +135,12 @@ function centerPopup_ipaddress(popup,backgroundPopup){
 				actions='<img class="clickimg" title="Remove" alt="Remove" src=../images/deny.png onclick=remove_ipaddress('+p[i].id+')>&nbsp;';
 			}
  */
-			oTable.fnAddData( [start+i+1,p[i].name,p[i].instanceId, p[i].publicIp,p[i].status,p[i].reason,p[i].asset.productCatalog.infra.name,
+            var projName = '';
+			try{
+				projName = p[i].asset.project.name;
+			}catch(e){}
+			
+			oTable.fnAddData( [start+i+1,p[i].name,projName,p[i].instanceId, p[i].publicIp,p[i].status,p[i].reason,p[i].asset.productCatalog.infra.name,
 			                   actions ] );
 		}
 		
@@ -246,10 +253,19 @@ $(function(){
   				//dwr.util.setValue(id, sel);
   			});
 			
+			ProjectService.findAll(function(p){
+				dwr.util.removeAllOptions('projectId');
+				//dwr.util.addOptions('project', p, 'id', 'name');
+				dwr.util.addOptions('projectId', p, 'id', function(p) {
+					return p.name+' @ '+p.department.name;
+				});
+				//dwr.util.setValue(id, sel);
+				
+			});
 		});
 		
 		function submitForm_ipaddress(f){
-			var addressInfop = {  id:viewed_ipaddress,name:null, reason:null,product:null };
+			var addressInfop = {  id:viewed_ipaddress,name:null, reason:null,product:null, projectId:null };
 			  dwr.util.getValues(addressInfop);
 			  //alert(dwr.util.getValue("product"));
 			  //addressInfop.product = dwr.util.getValue("product");
@@ -268,7 +284,7 @@ $(function(){
 		}
 		
 		function submitForm_ipaddress_associate(f){
-			var addressInfop = {  id:viewed_ipaddress,name:null, instanceId:null,publicIp:null };
+			var addressInfop = {  id:viewed_ipaddress,name:null, instanceId:null,publicIp:null, projectId:null };
 			  dwr.util.getValues(addressInfop);
 			  //alert(addressInfop.instanceId);
 			  //alert(addressInfop.publicIp);
@@ -344,14 +360,14 @@ function remove_ipaddress(id){
 function afterRemove_ipaddress(){
 	viewed_ipaddress = -1;
 	$("#popupbutton_ipaddresslist").click();
-	$.sticky('<b>Ip Address Removed.</b><p>');
+	CommonService.getSessionMsg(function(p){   $.sticky(p);  });
 	}
 	
 	
 function afterSave_ipaddress(){
 	viewed_ipaddress = -1;
 	$("#popupbutton_ipaddresslist").click();
-	$.sticky('<b>Ip Address Saved.</b><p>');
+	CommonService.getSessionMsg(function(p){   $.sticky(p);  });
 	}
 	
 	function associate_ipaddress(id){
@@ -367,12 +383,12 @@ function afterSave_ipaddress(){
 		AddressInfoP.releaseAddress(id,afterRelease_ipaddress);
 	}
 	function afterRelease_ipaddress(){
-		$.sticky('<b>Releasing Ip Adress </b><p>');
+		CommonService.getSessionMsg(function(p){   $.sticky(p);  });
 		//AddressInfoP.findById(id,afterEdit_ipaddress);
 	}
 	
 	function afterDisassociate_ipaddress(){
-		$.sticky('<b>Detaching Ip Adress </b><p>');
+		CommonService.getSessionMsg(function(p){   $.sticky(p);  });
 		//AddressInfoP.findById(id,afterEdit_ipaddress);
 	}
 
@@ -441,6 +457,13 @@ function afterSave_ipaddress(){
 								    <td style="width: 50%;">Product : </td>
 								    <td style="width: 50%;">
 								    <select id="product" name="product" style="width: 205px;" class="required">
+							    	</select>
+							    	</td>
+								  </tr>
+								  <tr>
+								    <td style="width: 20%;">project : </td>
+								    <td style="width: 80%;">
+								    <select id="projectId" name="projectId" style="width: 205px;" class="required">
 							    	</select>
 							    	</td>
 								  </tr>

@@ -1,4 +1,3 @@
-
 ------------------------------------------------------------------------------
 README	
 ------------------------------------------------------------------------------
@@ -18,14 +17,10 @@ Saravana - ankamsarav@gmail.com
 Dilip - mddilip@gmail.com
 
 ------------------------------------------------------------------------------
-THANKS	
-------------------------------------------------------------------------------
-Typica, jClouds, Spring, ROO and other open source projects.
-
-------------------------------------------------------------------------------
 INSTALL	
 ------------------------------------------------------------------------------
-Follow the instructions at http://code.google.com/p/mycloudportal/
+for installation, follow the instructions at http://code.google.com/p/mycloudportal/
+for dev environment setup, follow http://docs.mycloudportal.in/ (https://sites.google.com/a/mycloudportal.in/docs/)
 
 ------------------------------------------------------------------------------
 COPYING / LICENSE

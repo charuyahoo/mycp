@@ -1,12 +1,9 @@
 package in.mycp.domain;
 
-import in.mycp.controller.LoginController;
 import java.util.Date;
 import javax.persistence.EntityManager;
 import javax.persistence.Transient;
 import javax.persistence.TypedQuery;
-import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
-import org.apache.commons.lang3.builder.ToStringStyle;
 import org.apache.log4j.Logger;
 import org.springframework.roo.addon.dbre.RooDbManaged;
 import org.springframework.roo.addon.javabean.RooJavaBean;
@@ -61,7 +58,7 @@ public class Asset {
             if (assetType == null) throw new IllegalArgumentException("The assetType argument is required");
             EntityManager em = Asset.entityManager();
             TypedQuery<Asset> q = null;
-            q = em.createQuery("SELECT o FROM Asset AS o WHERE o.user.project.department.company.id = :companyId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
+            q = em.createQuery("SELECT o FROM Asset AS o WHERE o.user.department.company.id = :companyId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
             q.setParameter("companyId", companyId);
             q.setParameter("assetType", assetType);
             q.setParameter("active", active);
@@ -77,7 +74,7 @@ public class Asset {
             if (assetType == null) throw new IllegalArgumentException("The assetType argument is required");
             EntityManager em = Asset.entityManager();
             TypedQuery<Asset> q = null;
-            q = em.createQuery("SELECT o FROM Asset AS o WHERE o.user.project.department.id = :departmentId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
+            q = em.createQuery("SELECT o FROM Asset AS o WHERE o.user.department.id = :departmentId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
             q.setParameter("departmentId", departmentId);
             q.setParameter("assetType", assetType);
             q.setParameter("active", active);
@@ -93,7 +90,7 @@ public class Asset {
             if (assetType == null) throw new IllegalArgumentException("The assetType argument is required");
             EntityManager em = Asset.entityManager();
             TypedQuery<Asset> q = null;
-            q = em.createQuery("SELECT o FROM Asset AS o WHERE o.user.project.id = :projectId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
+            q = em.createQuery("SELECT o FROM Asset o join o.user.projects ps WHERE ps.id = :projectId AND o.assetType = :assetType" + "  AND (o.active = :active or o.endTime is not null)", Asset.class);
             q.setParameter("projectId", projectId);
             q.setParameter("assetType", assetType);
             q.setParameter("active", active);

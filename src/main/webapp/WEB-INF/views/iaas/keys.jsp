@@ -2,6 +2,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
 <%@ taglib uri="http://tiles.apache.org/tags-tiles" prefix="tiles" %>
   <script type='text/javascript' src='/dwr/interface/KeyPairInfoP.js'></script>
+  <script type='text/javascript' src='/dwr/interface/ProjectService.js'></script>
   
 <script type="text/javascript">
 /***************************/
@@ -72,6 +73,7 @@
 	        "aoColumns": [
 	            { "sTitle": "#" },
 	            { "sTitle": "Name" },
+	            { "sTitle": "Project" },
 	            { "sTitle": "Fingerprint" },
 	            { "sTitle": "Status" },
 	            { "sTitle": "Key" },
@@ -108,22 +110,27 @@
         		actions=
                 	'<img class="clickimg" title="Delete" alt="Remove" src=../images/deny.png onclick=remove_keys('+p[i].id+')>';
         	}
+			var projName = '';
+			try{
+				projName = p[i].asset.project.name;
+			}catch(e){}
 			
-			oTable.fnAddData( [start+i+1,p[i].keyName, p[i].keyFingerprint,p[i].status,'<a href=\"#\" onClick=\"+showKeyMaterial('+p[i].id+')\">Show/Hide</a>'+d,
+			oTable.fnAddData( [start+i+1,p[i].keyName, projName, p[i].keyFingerprint,p[i].status,'<a href=\"#\" onClick=\"+showKeyMaterial('+p[i].id+')\">Download</a>'+d,
 			                   p[i].asset.productCatalog.infra.name,
 			                   actions ] );
 		}
-		
-		
-	
 	}
 
 	function showKeyMaterial(id){
-		if (document.getElementById('keyMat'+id).style.display == 'none') {
+		KeyPairInfoP.writeFileContentInResponse(id, function(data) {
+		    dwr.engine.openInDownload(data);
+		  });
+		
+		/* if (document.getElementById('keyMat'+id).style.display == 'none') {
 			document.getElementById('keyMat'+id).style.display = 'block';
 		}else{
 			document.getElementById('keyMat'+id).style.display = 'none';
-		}
+		} */
 		//KeyPairInfoP.findById(id,showKey);
 	}
 	
@@ -170,8 +177,15 @@
 				
 			} );
 				
+			ProjectService.findAll(function(p){
+				dwr.util.removeAllOptions('projectId');
+				//dwr.util.addOptions('project', p, 'id', 'name');
+				dwr.util.addOptions('projectId', p, 'id', function(p) {
+					return p.name+' @ '+p.department.name;
+				});
+				//dwr.util.setValue(id, sel);
 				
-				
+			});
 				
 			});
 		
@@ -210,7 +224,7 @@
 		});
 		
 	function submitForm_keys(f){
-		var keyPairInfop = {  id:viewed_keys,keyName:null,product:null };
+		var keyPairInfop = {  id:viewed_keys,keyName:null,product:null, projectId:null };
 		  dwr.util.getValues(keyPairInfop);
 		  if(viewed_keys == -1){
 			  keyPairInfop.id  = null; 
@@ -223,7 +237,7 @@
 	}
 	function cancelForm_keys(f){
 	
-		var keyPairInfop = {  id:null,keyName:null ,product:null};
+		var keyPairInfop = {  id:null,keyName:null ,product:null, projectId:null};
 		  dwr.util.setValues(keyPairInfop);
 		  viewed_keys = -1;
 		  disablePopup_keys();
@@ -325,6 +339,13 @@
 								    <td style="width: 50%;">Product : </td>
 								    <td style="width: 50%;">
 								    <select id="product" name="product" style="width: 205px;" class="required">
+							    	</select>
+							    	</td>
+								  </tr>
+								  <tr>
+								    <td style="width: 20%;">project : </td>
+								    <td style="width: 80%;">
+								    <select id="projectId" name="projectId" style="width: 205px;" class="required">
 							    	</select>
 							    	</td>
 								  </tr>

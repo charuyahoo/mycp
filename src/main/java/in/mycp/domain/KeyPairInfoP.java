@@ -1,6 +1,7 @@
 package in.mycp.domain;
 
 import java.util.List;
+import javax.persistence.Column;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 import javax.persistence.Transient;
@@ -19,8 +20,22 @@ import org.springframework.roo.addon.tostring.RooToString;
 @RooJpaActiveRecord(versionField = "", table = "key_pair_info_p", finders = { "findKeyPairInfoPsByKeyNameEquals", "findKeyPairInfoPsByAsset" })
 public class KeyPairInfoP {
 
+    @Column(name = "keyMaterial", length = 2048)
+    private String keyMaterial;
+
     @Transient
     public String product;
+
+    @Transient
+    public int projectId;
+
+    public int getProjectId() {
+        return projectId;
+    }
+
+    public void setProjectId(int projectId) {
+        this.projectId = projectId;
+    }
 
     public String getProduct() {
         return product;
@@ -28,6 +43,14 @@ public class KeyPairInfoP {
 
     public void setProduct(String product) {
         this.product = product;
+    }
+
+    public String getKeyMaterial() {
+        return cleanUpKeys(keyMaterial);
+    }
+
+    public void setKeyMaterial(String keyMaterialL) {
+        this.keyMaterial = keyMaterialL;
     }
 
     public static List<in.mycp.domain.KeyPairInfoP> findAllKeyPairInfoPs() {
@@ -75,9 +98,9 @@ public class KeyPairInfoP {
         EntityManager em = entityManager();
         TypedQuery<KeyPairInfoP> q = null;
         if (StringUtils.isBlank(search)) {
-            q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.project.department.company = :company", KeyPairInfoP.class);
+            q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.department.company = :company", KeyPairInfoP.class);
         } else {
-            q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.project.department.company = :company " + " and " + " o.keyName like :search ", KeyPairInfoP.class);
+            q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.department.company = :company " + " and " + " o.keyName like :search ", KeyPairInfoP.class);
             if (StringUtils.contains(search, " ")) {
                 search = StringUtils.replaceChars(search, " ", "%");
             }
@@ -89,10 +112,38 @@ public class KeyPairInfoP {
         return q;
     }
 
+    public static TypedQuery<in.mycp.domain.KeyPairInfoP> findKeyPairInfoPsByCompany(Company company) {
+        if (company == null) throw new IllegalArgumentException("The company argument is required");
+        EntityManager em = entityManager();
+        TypedQuery<KeyPairInfoP> q = null;
+        q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.department.company = :company", KeyPairInfoP.class);
+        q.setParameter("company", company);
+        return q;
+    }
+
+    public static TypedQuery<in.mycp.domain.KeyPairInfoP> findKeyPairInfoPsBy(Infra infra, Company company) {
+        if (company == null) throw new IllegalArgumentException("The company argument is required");
+        EntityManager em = entityManager();
+        TypedQuery<KeyPairInfoP> q = null;
+        q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.user.department.company = :company " + " and o.asset.productCatalog.infra = :infra", KeyPairInfoP.class);
+        q.setParameter("company", company);
+        q.setParameter("infra", infra);
+        return q;
+    }
+
+    public static TypedQuery<in.mycp.domain.KeyPairInfoP> findKeyPairInfoPsByInfra(Infra infra) {
+        if (infra == null) throw new IllegalArgumentException("The infra argument is required");
+        EntityManager em = entityManager();
+        TypedQuery<KeyPairInfoP> q = null;
+        q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.asset.productCatalog.infra = :infra", KeyPairInfoP.class);
+        q.setParameter("infra", infra);
+        return q;
+    }
+
     public static Number findKeyPairInfoCountByCompany(Company company, String status) {
         String queryStr = "SELECT COUNT(i.id) FROM KeyPairInfoP i where i.status = :status ";
         if (company != null) {
-            queryStr = queryStr + "  and i.asset.user.project.department.company = :company";
+            queryStr = queryStr + "  and i.asset.user.department.company = :company";
         }
         Query q = entityManager().createQuery(queryStr);
         q.setParameter("status", status);
@@ -105,13 +156,36 @@ public class KeyPairInfoP {
     public static TypedQuery<in.mycp.domain.KeyPairInfoP> findKeyPairInfoPsByKeyNameEqualsAndCompanyEquals(String keyName, Company company) {
         if (keyName == null || keyName.length() == 0) throw new IllegalArgumentException("The keyName argument is required");
         EntityManager em = entityManager();
-        TypedQuery<KeyPairInfoP> q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.keyName = :keyName " + " and o.asset.user.project.department.company = :company", KeyPairInfoP.class);
+        TypedQuery<KeyPairInfoP> q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.keyName = :keyName " + " and o.asset.user.department.company = :company", KeyPairInfoP.class);
         q.setParameter("keyName", keyName);
         q.setParameter("company", company);
         return q;
     }
 
+    public static TypedQuery<in.mycp.domain.KeyPairInfoP> findKeyPairInfoPsBy(Infra infra, String keyName, Company company) {
+        if (keyName == null || keyName.length() == 0) throw new IllegalArgumentException("The keyName argument is required");
+        EntityManager em = entityManager();
+        TypedQuery<KeyPairInfoP> q = em.createQuery("SELECT o FROM KeyPairInfoP AS o WHERE o.keyName = :keyName " + " and o.asset.user.department.company = :company " + " and o.asset.productCatalog.infra = :infra", KeyPairInfoP.class);
+        q.setParameter("keyName", keyName);
+        q.setParameter("company", company);
+        q.setParameter("infra", infra);
+        return q;
+    }
+
     public String toString() {
         return ReflectionToStringBuilder.toString(this, ToStringStyle.SHORT_PREFIX_STYLE);
+    }
+
+    public static String cleanUpKeys(String keyMaterial) {
+        try {
+            String begin = "-----BEGIN RSA PRIVATE KEY-----";
+            String end = "-----END RSA PRIVATE KEY-----";
+            String part = keyMaterial.substring(keyMaterial.indexOf(begin) + begin.length(), keyMaterial.indexOf(end));
+            part = part.replaceAll(" ", System.getProperty("line.separator").toString());
+            keyMaterial = begin + part + end;
+        } catch (Exception e) {
+            keyMaterial = "not imported";
+        }
+        return keyMaterial;
     }
 }
